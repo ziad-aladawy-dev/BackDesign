@@ -159,8 +159,8 @@ flowchart TD
 
         %% INTEGRATION CORE (ACL)
         subgraph Core_Integration [🔴 Integration & Sync: Execution Core]
-            ACL_Sync["SIS Sync / ETL Engine"]
-            ACL_Mapper["Domain Mapper: ACL"]
+            ACL_Inbound["Inbound Sync / Domain Mapper: ACL"]
+            ACL_Outbound["Outbound Relay: Transactional Outbox"]
         end
 
         %% IAM CORE
@@ -170,30 +170,32 @@ flowchart TD
             Mod_UserProfile["Local User Profiles"]
         end
 
-        %% WORKFLOW CORE
-        subgraph Core_Workflow [🔴 Requests & Workflows: Execution Core]
+        %% WORKFLOW & ORCHESTRATION CORE
+        subgraph Core_Workflow [🔴 Requests & Orchestration: Execution Core]
             Mod_Engine["Workflow Engine: Approvals, SLAs"]
             Mod_StudentReq["Student Requests: Certificates, Appeals"]
+            Mod_RegOrchestrator["Registration Orchestrator: Local Soft Booking"]
         end
 
-        %% UPSTREAM PROJECTIONS
-        subgraph Upstream_Domains [🟠 Upstream Projections: Academic & Enrollment]
-            Mod_Catalog["Academic Catalog (Programs, Courses)"]
-            Mod_Enrollment["Enrollment & Registration"]
-            Mod_Finance["Fee & Balance Management"]
+        %% UPSTREAM PROJECTIONS (Read-Only)
+        subgraph Upstream_Domains [🟠 Upstream Projections: Read Models]
+            Mod_Catalog["Academic Catalog Projection: Programs, Courses"]
+            Mod_EnrollmentHistory["Enrollment History Projection"]
+            Mod_FinanceProj["Finance Ledger Projection: Balances"]
         end
 
-        %% SUPPORTING DOMAINS
+        %% SUPPORTING DOMAINS (Write-Heavy / Transactions)
         subgraph Support_Domains [🟡 Supporting Domains: Teaching & Operations]
             Mod_Grading["Grading & Assessment"]
             Mod_Attendance["Attendance Tracking"]
             Mod_Schedule["Timetable & Scheduling"]
             Mod_Advising["Advising & Graduation"]
+            Mod_PaymentProc["Payment Processor"]
         end
 
         %% OPTIONAL DOMAINS
         subgraph Optional_Domains [⚪ Optional / Cross-Cutting Domains]
-            Mod_Notify["Notifications (Email/SMS)"]
+            Mod_Notify["Notifications: Email/SMS"]
             Mod_Reports["Reporting & Analytics"]
             Mod_Docs["File & Document Management"]
         end
@@ -203,27 +205,30 @@ flowchart TD
     %% DATA FLOWS & RELATIONSHIPS
     %% ----------------------------------------------------
 
-    %% SIS Integration Flow (The Backbone)
-    SIS -->|Pulls Raw Data| ACL_Sync
-    ACL_Sync -->|Transforms| ACL_Mapper
-    ACL_Mapper -->|Updates Local Read Models| Mod_Catalog
-    ACL_Mapper -->|Updates Local Read Models| Mod_Enrollment
-    ACL_Mapper -->|Updates Local Read Models| Mod_Finance
-    ACL_Mapper -->|Updates User Base| Mod_UserProfile
+    %% 1. Inbound SIS Integration Flow (CQRS Read Path)
+    SIS -->|Pulls Raw Master Data| ACL_Inbound
+    ACL_Inbound -->|Updates Local Read Models| Mod_Catalog
+    ACL_Inbound -->|Updates Local Read Models| Mod_EnrollmentHistory
+    ACL_Inbound -->|Updates Local Read Models| Mod_FinanceProj
+    ACL_Inbound -->|Updates User Base| Mod_UserProfile
 
-    %% DB Persistence
-    Core_Integration -->|Writes| LocalDB
+    %% 2. DB Persistence & Outbox
+    Core_Integration -->|Reads/Writes| LocalDB
     Core_IAM -->|Reads/Writes| LocalDB
-    Core_Workflow -->|Reads/Writes| LocalDB
+    Core_Workflow -->|Reads/Writes Outbox| LocalDB
     Upstream_Domains -->|Reads| LocalDB
-    Support_Domains -->|Reads/Writes| LocalDB
+    Support_Domains -->|Reads/Writes Outbox| LocalDB
     Optional_Domains -->|Reads/Writes| LocalDB
 
-    %% Portal routing to modules (Feature mapping)
-    UI_Student -->|Views Academics| Mod_Catalog
-    UI_Student -->|Registers| Mod_Enrollment
+    %% 3. Portal routing to modules (Feature mapping)
+    UI_Student -->|Views Catalog| Mod_Catalog
+    UI_Student -->|Views Schedule| Mod_EnrollmentHistory
+    UI_Student -->|Views Balances| Mod_FinanceProj
     UI_Student -->|Submits Requests| Mod_StudentReq
-    UI_Student -->|Pays Fees| Mod_Finance
+
+    %% Write Actions mapped to Command Orchestrators/Processors
+    UI_Student -->|Initiates Registration| Mod_RegOrchestrator
+    UI_Student -->|Initiates Payment| Mod_PaymentProc
 
     UI_Staff -->|Enters Grades| Mod_Grading
     UI_Staff -->|Marks Attendance| Mod_Attendance
@@ -233,18 +238,26 @@ flowchart TD
     UI_Admin -->|Configures Roles| Mod_RBAC
     UI_Admin -->|Generates Reports| Mod_Reports
 
-    %% Internal Module Dependencies (DDD Rules)
+    %% 4. Internal Module Dependencies (DDD Rules)
     Mod_StudentReq -->|Triggers| Mod_Engine
     Mod_Engine -->|Uses Roles| Mod_RBAC
-    Mod_Enrollment -->|Checks Prerequisites| Mod_Catalog
+    Mod_RegOrchestrator -->|Checks Prerequisites| Mod_Catalog
 
-    %% Optional Domain Event Hooks
+    %% 5. The Write-Back Path (CQRS Command Path to SIS via Outbox)
+    Mod_RegOrchestrator -->|Writes Command to Outbox| ACL_Outbound
+    Mod_PaymentProc -->|Writes Success to Outbox| ACL_Outbound
+    Mod_Grading -->|Writes Final Grades to Outbox| ACL_Outbound
+    Mod_Attendance -->|Writes Logs to Outbox| ACL_Outbound
+
+    ACL_Outbound -->|Asynchronously Pushes to| SIS
+
+    %% 6. Optional Domain Event Hooks
     Mod_Engine -.->|Publishes Event| Mod_Notify
-    Mod_Grading -.->|Publishes Event| Mod_Notify
+    Mod_RegOrchestrator -.->|Saga Compensations| Mod_Notify
     Mod_StudentReq -.->|Stores Attachments| Mod_Docs
 
-    %% External Integrations
-    Mod_Finance -->|Transactions| PaymentGtwy
+    %% 7. External Integrations
+    Mod_PaymentProc -->|Executes Transaction| PaymentGtwy
 
     %% ----------------------------------------------------
     %% STYLING
