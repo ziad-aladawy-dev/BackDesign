@@ -32,7 +32,7 @@ flowchart TD
     Instructor -->|Manages attendance, grading| PortalSystem
     Admin -->|Manages policies, workflows, reports| PortalSystem
 
-    PortalSystem <-->|Syncs data, maps domain (ACL)| SIS
+    PortalSystem <-->|Syncs data, maps domain ACL| SIS
     PortalSystem -->|Processes payments| PaymentGateway
     PortalSystem -->|Integrates course content| LMS
 
@@ -64,7 +64,7 @@ flowchart TD
         ApiGateway["API Gateway\n(Unified Entrypoint, Rate Limiting)"]
 
         %% Backend
-        subgraph Backend [Modular Monolithic Backend (.NET)]
+        subgraph Backend [Modular Monolithic Backend: .NET]
             AppCore["Modular Backend System\n(All DDD Modules)"]
             SyncWorker["Background Sync Workers\n(ETL & Scheduled Jobs)"]
         end
@@ -115,7 +115,7 @@ This diagram details the internal structure of the **Modular Monolithic Backend*
 flowchart TD
 
     %% Define Subgraphs for Categorization
-    subgraph ExecutionCore [🔴 Execution Core (System Cannot Run Without These)]
+    subgraph ExecutionCore [🔴 Execution Core: System Cannot Run Without These]
         IAM["Identity & Access Management (IAM)\nAuth, Roles, Permissions"]
         UserContext["User Profile & Context\nLocal user projection"]
         Integration["Integration & Sync Layer (ACL)\nShields from SIS chaos"]
@@ -123,13 +123,13 @@ flowchart TD
         StudentRequests["Student Requests System\nCertificates, Clearance"]
     end
 
-    subgraph UpstreamCore [🟠 Upstream Core / Projections (Owned by SIS)]
+    subgraph UpstreamCore [🟠 Upstream Core / Projections: Owned by SIS]
         AcademicStructure["Academic Structure\nPrograms, Departments, Catalog"]
         Enrollment["Enrollment Records\nCourse reg, prerequisites"]
         Finance["Financial Data\nTuition, Balances, Payments"]
     end
 
-    subgraph SupportingModules [🟡 Supporting Modules (Value Add)]
+    subgraph SupportingModules [🟡 Supporting Modules: Value Add]
         Timetable["Timetable & Scheduling"]
         Attendance["Attendance Tracking"]
         Grading["Grading & Assessment"]
@@ -138,7 +138,7 @@ flowchart TD
         Graduation["Graduation Management"]
     end
 
-    subgraph OptionalModules [⚪ Optional / Generic Modules (Plug & Play)]
+    subgraph OptionalModules [⚪ Optional / Generic Modules: Plug & Play]
         Notifications["Notification System\nEmail, SMS, Push"]
         Reporting["Reporting & Analytics"]
         Documents["File & Document Management"]
