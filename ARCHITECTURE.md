@@ -102,28 +102,20 @@ flowchart TD
 
 ---
 
-## 3. Comprehensive Modular Data Flow & Domain Diagram (Level 3+)
+## 3. Modular Internal Views (Level 3)
 
-This diagram details the deep internal structure of the **Modular Monolithic Backend**. It captures:
-1. All distinct **user roles** (Student, Instructor, Student Affairs, System Admin, Finance).
-2. Their interactions with specific **portals/gateways**.
-3. The routing of their requests to proper **Bounded Contexts** (Core, Supporting, Optional).
-4. The crucial **data flow from the external SIS** down into local projection databases, managed by the **Integration Layer (ACL)**.
+To prevent visual clutter ("the jungle of arrows") and strictly enforce boundary concepts, the detailed architecture is split into two bounded visual views:
+* **Level 3A:** User UI to Execution Flow (Focuses on Portals, IAM, and Command Execution).
+* **Level 3B:** Integration & Data Flow (Focuses on the CQRS Read/Write paths, Master Data Sync, and Portal-Owned State).
+
+### Level 3A: User UI to Execution Flow
+
+This view demonstrates how actors interact with unified portals, and how those portals interact with the Execution Core and Supporting Domains. Notice that Instructors, Finance, and Admins share a consolidated **Management Portal**, heavily relying on the **RBAC Engine** to hydrate their UI dynamically.
 
 ```mermaid
 flowchart TD
 
-    %% ----------------------------------------------------
-    %% EXTERNAL SYSTEMS (Source of Truth)
-    %% ----------------------------------------------------
-    subgraph ExternalEcosystem [External Systems]
-        SIS[("Central SIS / ERP\n(Master Data)")]
-        PaymentGtwy["Payment Gateway"]
-    end
-
-    %% ----------------------------------------------------
-    %% USERS & PORTALS
-    %% ----------------------------------------------------
+    %% USERS
     subgraph EndUsers [User Roles]
         R_Student([Student])
         R_Instructor([Instructor])
@@ -132,150 +124,152 @@ flowchart TD
         R_Finance([Finance Officer])
     end
 
-    subgraph Portals [User Interfaces / API Gateway]
+    %% PORTALS (UI Shells)
+    subgraph Portals [User Interfaces / API Gateways]
         UI_Student["Student Portal"]
-        UI_Staff["Staff / Faculty Portal"]
-        UI_Admin["Admin & Management Portal"]
+        UI_Management["Unified Management Portal"]
     end
 
-    %% Map Users to Portals
+    %% Map Users
     R_Student --> UI_Student
-    R_Instructor --> UI_Staff
-    R_StudentAffairs --> UI_Admin
-    R_Finance --> UI_Admin
-    R_SysAdmin --> UI_Admin
+    R_Instructor --> UI_Management
+    R_StudentAffairs --> UI_Management
+    R_Finance --> UI_Management
+    R_SysAdmin --> UI_Management
 
-    %% ----------------------------------------------------
-    %% DATA LAYER
-    %% ----------------------------------------------------
-    subgraph DataLayer [Local Data Store]
-        LocalDB[("Local Projection DB\n& Workflow State")]
+    %% IAM CORE
+    subgraph Core_IAM [🔴 Identity & Access: Execution Core]
+        Mod_Auth["Authentication & SSO"]
+        Mod_RBAC["Role & Permissions Engine"]
     end
 
-    %% ----------------------------------------------------
-    %% BACKEND: MODULAR MONOLITH
-    %% ----------------------------------------------------
-    subgraph ModularBackend [Modular Monolith: Bounded Contexts]
+    UI_Management -.->|Dynamically Renders via| Mod_RBAC
 
-        %% INTEGRATION CORE (ACL)
-        subgraph Core_Integration [🔴 Integration & Sync: Execution Core]
-            ACL_Inbound["Inbound Sync / Domain Mapper: ACL"]
-            ACL_Outbound["Outbound Relay: Transactional Outbox"]
-        end
-
-        %% IAM CORE
-        subgraph Core_IAM [🔴 Identity & Access: Execution Core]
-            Mod_Auth["Authentication & SSO"]
-            Mod_RBAC["Role & Permissions Engine"]
-            Mod_UserProfile["Local User Profiles"]
-        end
-
-        %% WORKFLOW & ORCHESTRATION CORE
-        subgraph Core_Workflow [🔴 Requests & Orchestration: Execution Core]
-            Mod_Engine["Workflow Engine: Approvals, SLAs"]
-            Mod_StudentReq["Student Requests: Certificates, Appeals"]
-            Mod_RegOrchestrator["Registration Orchestrator: Local Soft Booking"]
-        end
-
-        %% UPSTREAM PROJECTIONS (Read-Only)
-        subgraph Upstream_Domains [🟠 Upstream Projections: Read Models]
-            Mod_Catalog["Academic Catalog Projection: Programs, Courses"]
-            Mod_EnrollmentHistory["Enrollment History Projection"]
-            Mod_FinanceProj["Finance Ledger Projection: Balances"]
-        end
-
-        %% SUPPORTING DOMAINS (Write-Heavy / Transactions)
-        subgraph Support_Domains [🟡 Supporting Domains: Teaching & Operations]
-            Mod_Grading["Grading & Assessment"]
-            Mod_Attendance["Attendance Tracking"]
-            Mod_Schedule["Timetable & Scheduling"]
-            Mod_Advising["Advising & Graduation"]
-            Mod_PaymentProc["Payment Processor"]
-        end
-
-        %% OPTIONAL DOMAINS
-        subgraph Optional_Domains [⚪ Optional / Cross-Cutting Domains]
-            Mod_Notify["Notifications: Email/SMS"]
-            Mod_Reports["Reporting & Analytics"]
-            Mod_Docs["File & Document Management"]
-        end
+    %% WORKFLOW & ORCHESTRATION CORE
+    subgraph Core_Workflow [🔴 Requests & Orchestration: Execution Core]
+        Mod_Engine["Workflow Engine: Approvals, SLAs"]
+        Mod_StudentReq["Student Requests: Certificates, Appeals"]
+        Mod_RegOrchestrator["Registration Orchestrator: Local Soft Booking"]
     end
 
-    %% ----------------------------------------------------
-    %% DATA FLOWS & RELATIONSHIPS
-    %% ----------------------------------------------------
+    %% SUPPORTING DOMAINS (Write-Heavy)
+    subgraph Support_Domains [🟡 Supporting Domains: Operations]
+        Mod_Grading["Grading & Assessment"]
+        Mod_Attendance["Attendance Tracking"]
+        Mod_PaymentProc["Payment Processor"]
+    end
 
-    %% 1. Inbound SIS Integration Flow (CQRS Read Path)
-    SIS -->|Pulls Raw Master Data| ACL_Inbound
-    ACL_Inbound -->|Updates Local Read Models| Mod_Catalog
-    ACL_Inbound -->|Updates Local Read Models| Mod_EnrollmentHistory
-    ACL_Inbound -->|Updates Local Read Models| Mod_FinanceProj
-    ACL_Inbound -->|Updates User Base| Mod_UserProfile
+    %% OPTIONAL UI-FACING DOMAINS
+    subgraph Optional_Domains [⚪ Optional / UI Features]
+        Mod_Reports["Reporting & Analytics"]
+        Mod_FeedbackSurveys["Feedback & Surveys"]
+    end
 
-    %% 2. DB Persistence & Outbox
-    Core_Integration -->|Reads/Writes| LocalDB
-    Core_IAM -->|Reads/Writes| LocalDB
-    Core_Workflow -->|Reads/Writes Outbox| LocalDB
-    Upstream_Domains -->|Reads| LocalDB
-    Support_Domains -->|Reads/Writes Outbox| LocalDB
-    Optional_Domains -->|Reads/Writes| LocalDB
-
-    %% 3. Portal routing to modules (Feature mapping)
-    UI_Student -->|Views Catalog| Mod_Catalog
-    UI_Student -->|Views Schedule| Mod_EnrollmentHistory
-    UI_Student -->|Views Balances| Mod_FinanceProj
+    %% Feature Routing
     UI_Student -->|Submits Requests| Mod_StudentReq
-
-    %% Write Actions mapped to Command Orchestrators/Processors
     UI_Student -->|Initiates Registration| Mod_RegOrchestrator
     UI_Student -->|Initiates Payment| Mod_PaymentProc
+    UI_Student -->|Submits| Mod_FeedbackSurveys
 
-    UI_Staff -->|Enters Grades| Mod_Grading
-    UI_Staff -->|Marks Attendance| Mod_Attendance
-    UI_Staff -->|Views Schedule| Mod_Schedule
+    UI_Management -->|Enters Grades| Mod_Grading
+    UI_Management -->|Marks Attendance| Mod_Attendance
+    UI_Management -->|Manages Workflows| Mod_Engine
+    UI_Management -->|Views Dashboards| Mod_Reports
 
-    UI_Admin -->|Manages Workflows| Mod_Engine
-    UI_Admin -->|Configures Roles| Mod_RBAC
-    UI_Admin -->|Generates Reports| Mod_Reports
-
-    %% 4. Internal Module Dependencies (DDD Rules)
+    %% Internal Dependencies
     Mod_StudentReq -->|Triggers| Mod_Engine
     Mod_Engine -->|Uses Roles| Mod_RBAC
-    Mod_RegOrchestrator -->|Checks Prerequisites| Mod_Catalog
 
-    %% 5. The Write-Back Path (CQRS Command Path to SIS via Outbox)
+    %% STYLING
+    classDef core fill:#ffebee,stroke:#c62828,stroke-width:2px;
+    classDef support fill:#fffde7,stroke:#fbc02d,stroke-width:2px;
+    classDef optional fill:#f5f5f5,stroke:#9e9e9e,stroke-width:2px;
+    class Core_IAM,Core_Workflow core;
+    class Support_Domains support;
+    class Optional_Domains optional;
+```
+
+---
+
+### Level 3B: Integration & Data Flow
+
+This diagram illustrates the CQRS Data flow. It separates **Upstream Projections** (where SIS is the system of record) from **Portal-Owned State** (where the Local DB is the sole source of truth). It also illustrates the outbound write-back path utilizing the **Transactional Outbox**, and the system-wide **Audit Trail**.
+
+```mermaid
+flowchart TD
+
+    %% EXTERNAL
+    SIS[("Central SIS / ERP\n(Master Data)")]
+
+    %% INTEGRATION CORE (ACL)
+    subgraph Core_Integration [🔴 Integration & Sync: Execution Core]
+        ACL_Inbound["Inbound Sync / Domain Mapper: ACL"]
+        ACL_Outbound["Outbound Relay: Transactional Outbox"]
+    end
+
+    %% UPSTREAM PROJECTIONS
+    subgraph Upstream_Domains [🟠 Upstream Projections: Read Models]
+        Mod_Catalog["Academic Catalog Projection"]
+        Mod_EnrollmentHistory["Enrollment History Projection"]
+        Mod_FinanceProj["Finance Ledger Projection"]
+    end
+
+    %% EXECUTION / SUPPORTING COMMANDS
+    subgraph Command_Domains [🟡 Commands / Orchestrators]
+        Mod_RegOrchestrator["Registration Orchestrator"]
+        Mod_PaymentProc["Payment Processor"]
+        Mod_Grading["Grading & Assessment"]
+    end
+
+    %% PORTAL-EXCLUSIVE STATE
+    subgraph Portal_State [⚪ Portal-Exclusive Data]
+        Mod_UserProfile["Local User Profiles (Photos, Prefs)"]
+        Mod_FeedbackSurveys["Feedback & Surveys"]
+    end
+
+    %% AUDIT & EVENTING
+    subgraph Observability [⚪ Observability]
+        Mod_AuditTrail["Central Audit Trail"]
+    end
+
+    LocalDB[("Local DB\n(Projections, Outbox, State)")]
+
+    %% SIS -> Read Models (Inbound CQRS)
+    SIS -->|Pulls Master Data| ACL_Inbound
+    ACL_Inbound -->|Updates| Mod_Catalog
+    ACL_Inbound -->|Updates| Mod_EnrollmentHistory
+    ACL_Inbound -->|Updates| Mod_FinanceProj
+
+    Upstream_Domains -->|Persists Projections| LocalDB
+
+    %% Commands -> Write-Back (Outbound CQRS)
+    Mod_RegOrchestrator -->|Checks Rules| Mod_Catalog
     Mod_RegOrchestrator -->|Writes Command to Outbox| ACL_Outbound
     Mod_PaymentProc -->|Writes Success to Outbox| ACL_Outbound
     Mod_Grading -->|Writes Final Grades to Outbox| ACL_Outbound
-    Mod_Attendance -->|Writes Logs to Outbox| ACL_Outbound
 
-    ACL_Outbound -->|Asynchronously Pushes to| SIS
+    ACL_Outbound -->|Async Push via Message Bus| SIS
 
-    %% 6. Optional Domain Event Hooks
-    Mod_Engine -.->|Publishes Event| Mod_Notify
-    Mod_RegOrchestrator -.->|Saga Compensations| Mod_Notify
-    Mod_StudentReq -.->|Stores Attachments| Mod_Docs
+    %% Portal-Exclusive (No SIS Sync)
+    Mod_UserProfile -->|Reads/Writes Only| LocalDB
+    Mod_FeedbackSurveys -->|Reads/Writes Only| LocalDB
 
-    %% 7. External Integrations
-    Mod_PaymentProc -->|Executes Transaction| PaymentGtwy
+    %% Event Logging
+    Command_Domains -.->|Domain Events: Who did what| Mod_AuditTrail
+    Mod_AuditTrail -->|Persists Logs| LocalDB
 
-    %% ----------------------------------------------------
     %% STYLING
-    %% ----------------------------------------------------
     classDef core fill:#ffebee,stroke:#c62828,stroke-width:2px;
     classDef upstream fill:#fff3e0,stroke:#ef6c00,stroke-width:2px;
-    classDef support fill:#fffde7,stroke:#fbc02d,stroke-width:2px;
-    classDef optional fill:#f5f5f5,stroke:#9e9e9e,stroke-width:2px;
-    classDef external fill:#e0e0e0,stroke:#616161,stroke-width:2px;
+    classDef command fill:#fffde7,stroke:#fbc02d,stroke-width:2px;
+    classDef portal fill:#f5f5f5,stroke:#9e9e9e,stroke-width:2px;
     classDef db fill:#2d5d8c,stroke:#1d3d5c,color:#fff,stroke-width:2px;
 
-    class Core_Integration,Core_IAM,Core_Workflow core;
+    class Core_Integration core;
     class Upstream_Domains upstream;
-    class Support_Domains support;
-    class Optional_Domains optional;
-    class SIS,PaymentGtwy external;
+    class Command_Domains command;
+    class Portal_State,Observability portal;
     class LocalDB db;
-
 ```
 
 ---
