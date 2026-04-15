@@ -102,79 +102,167 @@ flowchart TD
 
 ---
 
-## 3. Component / Module Diagram (Level 3)
+## 3. Comprehensive Modular Data Flow & Domain Diagram (Level 3+)
 
-This diagram details the internal structure of the **Modular Monolithic Backend**. It classifies the modules according to Domain-Driven Design into Core, Upstream Core, Supporting, and Optional domains.
-
-* **Execution Core**: The absolute backbone of this orchestrator system. The system dies without these.
-* **Upstream Core (Read-Only Projections)**: Core to the university, but owned by the SIS. We maintain local projections of these.
-* **Supporting/Value-Add Modules**: Modules that enhance the university experience (workflows, portals).
-* **Optional/Generic Modules**: Plug-and-play functionalities.
+This diagram details the deep internal structure of the **Modular Monolithic Backend**. It captures:
+1. All distinct **user roles** (Student, Instructor, Student Affairs, System Admin, Finance).
+2. Their interactions with specific **portals/gateways**.
+3. The routing of their requests to proper **Bounded Contexts** (Core, Supporting, Optional).
+4. The crucial **data flow from the external SIS** down into local projection databases, managed by the **Integration Layer (ACL)**.
 
 ```mermaid
 flowchart TD
 
-    %% Define Subgraphs for Categorization
-    subgraph ExecutionCore [🔴 Execution Core: System Cannot Run Without These]
-        IAM["Identity & Access Management (IAM)\nAuth, Roles, Permissions"]
-        UserContext["User Profile & Context\nLocal user projection"]
-        Integration["Integration & Sync Layer (ACL)\nShields from SIS chaos"]
-        Workflow["Workflow Engine\nApprovals, SLAs, Statuses"]
-        StudentRequests["Student Requests System\nCertificates, Clearance"]
+    %% ----------------------------------------------------
+    %% EXTERNAL SYSTEMS (Source of Truth)
+    %% ----------------------------------------------------
+    subgraph ExternalEcosystem [External Systems]
+        SIS[("Central SIS / ERP\n(Master Data)")]
+        PaymentGtwy["Payment Gateway"]
     end
 
-    subgraph UpstreamCore [🟠 Upstream Core / Projections: Owned by SIS]
-        AcademicStructure["Academic Structure\nPrograms, Departments, Catalog"]
-        Enrollment["Enrollment Records\nCourse reg, prerequisites"]
-        Finance["Financial Data\nTuition, Balances, Payments"]
+    %% ----------------------------------------------------
+    %% USERS & PORTALS
+    %% ----------------------------------------------------
+    subgraph EndUsers [User Roles]
+        R_Student([Student])
+        R_Instructor([Instructor])
+        R_StudentAffairs([Student Affairs])
+        R_SysAdmin([System Admin])
+        R_Finance([Finance Officer])
     end
 
-    subgraph SupportingModules [🟡 Supporting Modules: Value Add]
-        Timetable["Timetable & Scheduling"]
-        Attendance["Attendance Tracking"]
-        Grading["Grading & Assessment"]
-        Exams["Exams Management"]
-        Advising["Advising System"]
-        Graduation["Graduation Management"]
+    subgraph Portals [User Interfaces / API Gateway]
+        UI_Student["Student Portal"]
+        UI_Staff["Staff / Faculty Portal"]
+        UI_Admin["Admin & Management Portal"]
     end
 
-    subgraph OptionalModules [⚪ Optional / Generic Modules: Plug & Play]
-        Notifications["Notification System\nEmail, SMS, Push"]
-        Reporting["Reporting & Analytics"]
-        Documents["File & Document Management"]
-        ContentLMS["Learning & Content\n(Optional internal LMS)"]
-        AuditLog["Audit & Logging"]
-        Calendar["Academic Calendar Config"]
+    %% Map Users to Portals
+    R_Student --> UI_Student
+    R_Instructor --> UI_Staff
+    R_StudentAffairs --> UI_Admin
+    R_Finance --> UI_Admin
+    R_SysAdmin --> UI_Admin
+
+    %% ----------------------------------------------------
+    %% DATA LAYER
+    %% ----------------------------------------------------
+    subgraph DataLayer [Local Data Store]
+        LocalDB[("Local Projection DB\n& Workflow State")]
     end
 
-    %% Key Relationships (Dependency Rules)
-    %% Core modules are independent or rely on Upstream projections
-    Integration -->|Updates| UpstreamCore
-    Integration -->|Updates| UserContext
+    %% ----------------------------------------------------
+    %% BACKEND: MODULAR MONOLITH
+    %% ----------------------------------------------------
+    subgraph ModularBackend [Modular Monolith: Bounded Contexts]
 
-    UserContext --> IAM
-    StudentRequests --> Workflow
-    StudentRequests --> UserContext
-    StudentRequests --> UpstreamCore
+        %% INTEGRATION CORE (ACL)
+        subgraph Core_Integration [🔴 Integration & Sync: Execution Core]
+            ACL_Sync["SIS Sync / ETL Engine"]
+            ACL_Mapper["Domain Mapper: ACL"]
+        end
 
-    %% Supporting modules depend on Core & Projections
-    SupportingModules --> ExecutionCore
-    SupportingModules --> UpstreamCore
+        %% IAM CORE
+        subgraph Core_IAM [🔴 Identity & Access: Execution Core]
+            Mod_Auth["Authentication & SSO"]
+            Mod_RBAC["Role & Permissions Engine"]
+            Mod_UserProfile["Local User Profiles"]
+        end
 
-    %% Optional modules are usually event-driven or leaf nodes
-    ExecutionCore -.->|Publishes Events| OptionalModules
-    SupportingModules -.->|Publishes Events| OptionalModules
+        %% WORKFLOW CORE
+        subgraph Core_Workflow [🔴 Requests & Workflows: Execution Core]
+            Mod_Engine["Workflow Engine: Approvals, SLAs"]
+            Mod_StudentReq["Student Requests: Certificates, Appeals"]
+        end
 
-    %% Styling
+        %% UPSTREAM PROJECTIONS
+        subgraph Upstream_Domains [🟠 Upstream Projections: Academic & Enrollment]
+            Mod_Catalog["Academic Catalog (Programs, Courses)"]
+            Mod_Enrollment["Enrollment & Registration"]
+            Mod_Finance["Fee & Balance Management"]
+        end
+
+        %% SUPPORTING DOMAINS
+        subgraph Support_Domains [🟡 Supporting Domains: Teaching & Operations]
+            Mod_Grading["Grading & Assessment"]
+            Mod_Attendance["Attendance Tracking"]
+            Mod_Schedule["Timetable & Scheduling"]
+            Mod_Advising["Advising & Graduation"]
+        end
+
+        %% OPTIONAL DOMAINS
+        subgraph Optional_Domains [⚪ Optional / Cross-Cutting Domains]
+            Mod_Notify["Notifications (Email/SMS)"]
+            Mod_Reports["Reporting & Analytics"]
+            Mod_Docs["File & Document Management"]
+        end
+    end
+
+    %% ----------------------------------------------------
+    %% DATA FLOWS & RELATIONSHIPS
+    %% ----------------------------------------------------
+
+    %% SIS Integration Flow (The Backbone)
+    SIS -->|Pulls Raw Data| ACL_Sync
+    ACL_Sync -->|Transforms| ACL_Mapper
+    ACL_Mapper -->|Updates Local Read Models| Mod_Catalog
+    ACL_Mapper -->|Updates Local Read Models| Mod_Enrollment
+    ACL_Mapper -->|Updates Local Read Models| Mod_Finance
+    ACL_Mapper -->|Updates User Base| Mod_UserProfile
+
+    %% DB Persistence
+    Core_Integration -->|Writes| LocalDB
+    Core_IAM -->|Reads/Writes| LocalDB
+    Core_Workflow -->|Reads/Writes| LocalDB
+    Upstream_Domains -->|Reads| LocalDB
+    Support_Domains -->|Reads/Writes| LocalDB
+    Optional_Domains -->|Reads/Writes| LocalDB
+
+    %% Portal routing to modules (Feature mapping)
+    UI_Student -->|Views Academics| Mod_Catalog
+    UI_Student -->|Registers| Mod_Enrollment
+    UI_Student -->|Submits Requests| Mod_StudentReq
+    UI_Student -->|Pays Fees| Mod_Finance
+
+    UI_Staff -->|Enters Grades| Mod_Grading
+    UI_Staff -->|Marks Attendance| Mod_Attendance
+    UI_Staff -->|Views Schedule| Mod_Schedule
+
+    UI_Admin -->|Manages Workflows| Mod_Engine
+    UI_Admin -->|Configures Roles| Mod_RBAC
+    UI_Admin -->|Generates Reports| Mod_Reports
+
+    %% Internal Module Dependencies (DDD Rules)
+    Mod_StudentReq -->|Triggers| Mod_Engine
+    Mod_Engine -->|Uses Roles| Mod_RBAC
+    Mod_Enrollment -->|Checks Prerequisites| Mod_Catalog
+
+    %% Optional Domain Event Hooks
+    Mod_Engine -.->|Publishes Event| Mod_Notify
+    Mod_Grading -.->|Publishes Event| Mod_Notify
+    Mod_StudentReq -.->|Stores Attachments| Mod_Docs
+
+    %% External Integrations
+    Mod_Finance -->|Transactions| PaymentGtwy
+
+    %% ----------------------------------------------------
+    %% STYLING
+    %% ----------------------------------------------------
     classDef core fill:#ffebee,stroke:#c62828,stroke-width:2px;
     classDef upstream fill:#fff3e0,stroke:#ef6c00,stroke-width:2px;
     classDef support fill:#fffde7,stroke:#fbc02d,stroke-width:2px;
     classDef optional fill:#f5f5f5,stroke:#9e9e9e,stroke-width:2px;
+    classDef external fill:#e0e0e0,stroke:#616161,stroke-width:2px;
+    classDef db fill:#2d5d8c,stroke:#1d3d5c,color:#fff,stroke-width:2px;
 
-    class IAM,UserContext,Integration,Workflow,StudentRequests core;
-    class AcademicStructure,Enrollment,Finance upstream;
-    class Timetable,Attendance,Grading,Exams,Advising,Graduation support;
-    class Notifications,Reporting,Documents,ContentLMS,AuditLog,Calendar optional;
+    class Core_Integration,Core_IAM,Core_Workflow core;
+    class Upstream_Domains upstream;
+    class Support_Domains support;
+    class Optional_Domains optional;
+    class SIS,PaymentGtwy external;
+    class LocalDB db;
+
 ```
 
 ---
