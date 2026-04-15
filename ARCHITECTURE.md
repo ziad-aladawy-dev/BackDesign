@@ -157,12 +157,15 @@ flowchart TD
         Mod_Grading["Grading & Assessment"]
         Mod_Attendance["Attendance Tracking"]
         Mod_PaymentProc["Payment Processor"]
+        Mod_Advising["Advising & Graduation"]
     end
 
     %% OPTIONAL UI-FACING DOMAINS
     subgraph Optional_Domains [⚪ Optional / UI Features]
         Mod_Reports["Reporting & Analytics"]
         Mod_FeedbackSurveys["Feedback & Surveys"]
+        Mod_Notify["Notifications: Email/SMS"]
+        Mod_Docs["Document Management"]
     end
 
     %% Feature Routing
@@ -175,10 +178,13 @@ flowchart TD
     UI_Management -->|Marks Attendance| Mod_Attendance
     UI_Management -->|Manages Workflows| Mod_Engine
     UI_Management -->|Views Dashboards| Mod_Reports
+    UI_Management -->|Manages Clearances| Mod_Advising
 
     %% Internal Dependencies
     Mod_StudentReq -->|Triggers| Mod_Engine
+    Mod_StudentReq -->|Stores Files| Mod_Docs
     Mod_Engine -->|Uses Roles| Mod_RBAC
+    Mod_Engine -.->|Triggers Alerts| Mod_Notify
 
     %% STYLING
     classDef core fill:#ffebee,stroke:#c62828,stroke-width:2px;
@@ -212,6 +218,7 @@ flowchart TD
         Mod_Catalog["Academic Catalog Projection"]
         Mod_EnrollmentHistory["Enrollment History Projection"]
         Mod_FinanceProj["Finance Ledger Projection"]
+        Mod_Schedule["Timetabling & Exams Projection"]
     end
 
     %% EXECUTION / SUPPORTING COMMANDS
@@ -219,6 +226,7 @@ flowchart TD
         Mod_RegOrchestrator["Registration Orchestrator"]
         Mod_PaymentProc["Payment Processor"]
         Mod_Grading["Grading & Assessment"]
+        Mod_Attendance["Attendance Tracking"]
     end
 
     %% PORTAL-EXCLUSIVE STATE
@@ -239,6 +247,7 @@ flowchart TD
     ACL_Inbound -->|Updates| Mod_Catalog
     ACL_Inbound -->|Updates| Mod_EnrollmentHistory
     ACL_Inbound -->|Updates| Mod_FinanceProj
+    ACL_Inbound -->|Updates| Mod_Schedule
 
     Upstream_Domains -->|Persists Projections| LocalDB
 
@@ -247,6 +256,7 @@ flowchart TD
     Mod_RegOrchestrator -->|Writes Command to Outbox| ACL_Outbound
     Mod_PaymentProc -->|Writes Success to Outbox| ACL_Outbound
     Mod_Grading -->|Writes Final Grades to Outbox| ACL_Outbound
+    Mod_Attendance -->|Writes Logs to Outbox| ACL_Outbound
 
     ACL_Outbound -->|Async Push via Message Bus| SIS
 
@@ -344,7 +354,7 @@ To ensure there is absolutely no ambiguity when reading these architectural diag
 * **Mod_PaymentProc (Payment Processor)**: The active command module responsible for integrating with external Payment Gateways (like Stripe or PayPal), capturing funds, and writing the success receipt to the Outbox for SIS reconciliation.
 * **Mod_Grading (Grading & Assessment)**: The module where instructors input midterm, coursework, and final grades.
 * **Mod_Attendance**: The module for tracking daily student presence or absence in scheduled sections.
-* **Mod_Schedule (Timetable)**: Handles the spatial and temporal allocation of courses—showing students and instructors when and in which room their classes occur.
+* **Mod_Schedule (Timetabling & Exams)**: Handles the spatial and temporal allocation of courses and assessments—showing students and instructors when and in which room their classes and final exams occur.
 * **Mod_Advising (Advising & Graduation)**: Provides tools for academic advisors to track student progress against degree audits and manage graduation clearance eligibility.
 
 #### Optional / Cross-Cutting Domains
