@@ -1,4 +1,0 @@
-wwwroot\uploads\students\4d775ed1-fdd3-4bb0-a9db-df30c7b83b60.jpg
-wwwroot\uploads\students\431f0c05-20b3-4447-81a1-6d77a67228d4.jpg
-wwwroot\uploads\students\0db4b087-1e5d-48a7-b0c2-55ebf72f68a3.jpg
-wwwroot\uploads\students\076ea65c-5573-4ff0-99c0-6ecfa8c4de31.jpg
